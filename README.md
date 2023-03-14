@@ -12,7 +12,7 @@ Make sure you have installed:
 - Kindr (https://github.com/ethz-asl/kindr)
 - ROS Noetic (http://wiki.ros.org/noetic/Installation/Ubuntu)
 - boost library
-- Eigen3 library
+- Eigen3 library (https://gitlab.com/libeigen/eigen)
 - Control Toolbox library (https://github.com/ethz-adrl/control-toolbox/wiki/Quickstart)
 - LAPACK
 - OpenCV 4.0 (not yet)
