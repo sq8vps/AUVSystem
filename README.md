@@ -9,10 +9,11 @@ Make sure you have installed:
 - gcc and g++ 9.4 or newer
 - CMake 3.16 or newer (apt-get install cmake)
 - Python 3.8.10 or newer (apt-get install python3.8)
+- Kindr (https://github.com/ethz-asl/kindr)
 - ROS Noetic (http://wiki.ros.org/noetic/Installation/Ubuntu)
 - boost library
 - Eigen3 library
-- Control Toolbox library
+- Control Toolbox library (https://github.com/ethz-adrl/control-toolbox/wiki/Quickstart)
 - LAPACK
 - OpenCV 4.0 (not yet)
 - CUDA 11 (not yet)
