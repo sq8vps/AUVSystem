@@ -7,9 +7,9 @@ Make sure you have installed:
 
 - git
 - gcc and g++ 9.4 or newer
-- CMake 3.16 or newer
-- Python 3.8.10 or newer
-- ROS Noetic
+- CMake 3.16 or newer (apt-get install cmake)
+- Python 3.8.10 or newer (apt-get install python3.8)
+- ROS Noetic (http://wiki.ros.org/noetic/Installation/Ubuntu)
 - boost library
 - Eigen3 library
 - Control Toolbox library
