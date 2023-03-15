@@ -165,13 +165,11 @@ class AuvConfigSettings:
         
 
     def update(config):
-        path = '/'.join([*__file__.split('/')[0:-2], 'AUVSystem', 'auvConfig', 'auvConfig.json'])
-        with open(path, 'w') as file:
+        with open('auvConfig/auvConfig.json', 'w') as file:
             json.dump(config, file, indent=4)
     
     def load_config():
-        path = '/'.join([*__file__.split('/')[0:-2], 'AUVSystem', 'auvConfig', 'auvConfig.json'])
-        with open(path, 'r') as file:
+        with open('auvConfig/auvConfig.json', 'r') as file:
             return json.load(file)
 
 

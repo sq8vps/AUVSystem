@@ -15,6 +15,9 @@ set(SOURCES
 set(HEADERS
     src/PositioningSLAM.h
 )
+
+set(CMAKE_PREFIX_PATH _PATH "/opt/ros/noetic;${CMAKE_MODULE_PATH}")
+
 find_package(catkin REQUIRED COMPONENTS roscpp std_msgs geometry_msgs rospy)
 find_package(ct_core REQUIRED NO_MODULE)
 

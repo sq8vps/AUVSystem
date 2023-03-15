@@ -6,6 +6,8 @@ cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
 include_directories(external .)
 
+include_directories("/opt/ros/noetic/include")
+
 set(NAME Commons)
 
 set(SOURCES
@@ -21,6 +23,9 @@ set(HEADERS
     NodeBase.h
     ROSEnums.h
 )
+
+set(CMAKE_PREFIX_PATH _PATH "/opt/ros/noetic;${CMAKE_MODULE_PATH}")
+
 find_package(catkin REQUIRED COMPONENTS roscpp std_msgs geometry_msgs rospy)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
