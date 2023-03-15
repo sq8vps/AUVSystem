@@ -75,7 +75,7 @@ along with QuadProg++. If not, see <http://www.gnu.org/licenses/>.
 
 //#include <boost/numeric/ublas/vector.hpp>
 //#include <boost/numeric/ublas/matrix.hpp>
-#include <Eigen/Eigen>
+#include <eigen3/Eigen/Eigen>
 namespace QP
 {
 
