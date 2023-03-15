@@ -15,6 +15,7 @@ Make sure you have installed:
 - Eigen3 library (https://gitlab.com/libeigen/eigen)
 - Control Toolbox library (https://github.com/ethz-adrl/control-toolbox/wiki/Quickstart)
 - LAPACK
+- ImageTK for Python GUI (sudo apt-get install python3-pil.imagetk)
 - OpenCV 4.0 (not yet)
 - CUDA 11 (not yet)
 
