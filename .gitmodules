@@ -1,3 +1,3 @@
 [submodule "auvConfig"]
 	path = auvConfig
-	url = git@github.com:maltom/auvConfig.git
+	url = https://github.com/sq8vps/auvConfig.git
