@@ -1,5 +1,13 @@
 # AUVSystem
 
+## Submodule setup
+
+Initialize submodules with:
+
+```bash
+git submodule update --init --remote --recursive
+```
+
 ## Setup
 
 Clone this repo to your favourite directory.
