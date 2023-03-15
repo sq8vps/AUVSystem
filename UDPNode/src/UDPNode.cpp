@@ -1,5 +1,5 @@
 #include "UDPNode.h"
-
+#include <iostream>
 #include <array>
 #include <cstdlib>
 #include <exception>
@@ -12,9 +12,11 @@
 
 void UDPNode::processInMainLoop()
 {
+#ifndef NOSTM
 	udpServer->sendOutgoingMessages( outgoingMessages );
 	udpServer->getIncomingMessages( incomingMessages );
 	this->processIncomingMessages();
+#endif
 }
 
 void UDPNode::subscribeTopics()
@@ -34,6 +36,10 @@ void UDPNode::subscribeTopics()
 	this->rosSubscribers.emplace_back( this->rosNode->subscribe( AUVROS::Topics::DevPC::arbitrarlySetServos,
 	                                                             AUVROS::QueueSize::StandardQueueSize,
 	                                                             &UDPNode::sendServosSignalToMicroController,
+	                                                             this ) );
+	this->rosSubscribers.emplace_back( this->rosNode->subscribe( AUVROS::Topics::DevPC::arbitrarlyLaunchTorpedo,
+	                                                             AUVROS::QueueSize::StandardQueueSize,
+	                                                             &UDPNode::sendLaunchTorpedoSignalToMicroController,
 	                                                             this ) );
 }
 void UDPNode::advertiseTopics()
@@ -63,7 +69,7 @@ void UDPNode::loadNetworkConfig()
 		this->serverPort = jsonFunctions::network::readDevicePortNumber( configFileID, network::Device::jetson );
 		this->clientPort
 		    = jsonFunctions::network::readDevicePortNumber( configFileID, network::Device::microcontroller );
-			this->serverAdress = jsonFunctions::network::readDeviceIPNumber( configFileID, network::Device::jetson );
+		this->serverAdress = jsonFunctions::network::readDeviceIPNumber( configFileID, network::Device::jetson );
 		this->clientAdress
 		    = jsonFunctions::network::readDeviceIPNumber( configFileID, network::Device::microcontroller );
 	}
@@ -102,17 +108,13 @@ UDPNode::Frame UDPNode::decomposeFrame( const network::UDPincomingMessage& incMs
 
 void UDPNode::processCommand( const Frame& frame )
 {
-	// std::cout << "KOMENDA NR: " << frame.commandCode << "\n";
-	// std::cout << "ROZMIAR: " << frame.payloadSize << "\n";
-	// for( int i = 0; i < frame.payloadSize; ++i )
-	// {
-	// 	std::cout << "|" << frame.payload[ i ];
-	// }
-	// std::cout << "\n";
 	switch( frame.commandCode )
 	{
 	case Command::HEARTBEAT:
 		break;
+	case Command::NORESPREQ_PRESSURE_SENSOR_VALUE_REGULAR_REPORT:
+		std::cout << "Mam cisnienie mordo:" << static_cast< int >( frame.payload.at( 0 ) + frame.payload.at( 1 ) << 16 )
+		          << std::endl;
 	default:
 		break;
 	}
@@ -147,6 +149,10 @@ void UDPNode::processOutgoingMessages( const Frame& frame )
 void UDPNode::sendThrustersSignalToMicroController( const AUVROS::MessageTypes::ThrustersSignal& message )
 {
 	auto length = message.layout.dim.begin()->size;
+	if( length != 5 )
+	{
+		throw std::runtime_error( "Too many thrusters." );
+	}
 	Frame frame;
 	frame.commandCode = NORESPREQ_SET_THRUSTERS;
 	frame.payloadSize = length;
@@ -154,6 +160,16 @@ void UDPNode::sendThrustersSignalToMicroController( const AUVROS::MessageTypes::
 	{
 		frame.payload[ i ] = adjustThrusterValues( message.data[ i ] );
 	}
+	// korekcja
+	frame.payload[ 0 ]               = hardware::motorTorqueMinMax.second - frame.payload[ 0 ];
+	network::payloadWordType zamiana = frame.payload[ 4 ];
+	frame.payload[ 4 ]               = frame.payload[ 1 ];
+	frame.payload[ 2 ]               = hardware::motorTorqueMinMax.second - frame.payload[ 2 ];
+	frame.payload[ 1 ]               = zamiana;
+	frame.payload[ 3 ]               = hardware::motorTorqueMinMax.second - frame.payload[ 3 ];
+
+	// std::cout << " Thrust: " << frame.payload[ 0 ] << "   " << frame.payload[ 1 ] << "   " << frame.payload[ 2 ]
+	//           << "   " << frame.payload[ 3 ] << "   " << frame.payload[ 4 ] << std::endl;
 
 	this->processOutgoingMessages( frame );
 }
@@ -161,13 +177,47 @@ void UDPNode::sendThrustersSignalToMicroController( const AUVROS::MessageTypes::
 void UDPNode::sendServosSignalToMicroController( const AUVROS::MessageTypes::ServosSignal& message )
 {
 	auto length = message.layout.dim.begin()->size;
-	Frame frame;
-	frame.commandCode = NORESPREQ_SET_SERVOS;
-	frame.payloadSize = length;
-	for( auto i = 0u; i < length; ++i )
+	if( length != 2 )
 	{
-		frame.payload[ i ] = message.data[ i ];
+		throw std::runtime_error( "Too many servos." );
 	}
+	/*Frame frame;
+	Frame frame2;
+	frame.commandCode  = NORESPREQ_SET_SERVOS;
+	frame2.commandCode = NORESPREQ_SET_SERVOS;
+	frame.payloadSize  = length;
+	frame2.payloadSize = length;
+	// for( auto i = 0u; i < length; ++i )
+	// {
+	// 	frame.payload[ i ] = adjustServoValues( message.data[ i ] );
+	// 	std::cout<<frame.payload[i]<<std::endl;
+	// }
+	frame.payload[ 0 ]  = 0;
+	frame.payload[ 1 ]  = hardware::servoMinMax.second - adjustServoValues( message.data[ 0 ] );
+	frame2.payload[ 0 ] = 1;
+	frame2.payload[ 1 ] = adjustServoValues( message.data[ 1 ] );
+
+	// std::cout << frame.payload[ 0 ] << std::endl;
+	// std::cout << frame.payload[ 1 ] << std::endl;
+
+	this->processOutgoingMessages( frame );
+	this->processOutgoingMessages( frame2 );*/
+	Frame frame;
+	frame.commandCode  = NORESPREQ_SET_AZIMUTHAL_SERVOS;
+	frame.payloadSize  = length;
+	frame.payload[ 0 ] = hardware::servoMinMax.second - adjustServoValues( message.data[ 0 ] );
+	frame.payload[ 1 ] = adjustServoValues( message.data[ 1 ] );
+	// std::cout << frame.payload[ 0 ] << "   " << frame.payload[ 1 ] << std::endl;
+	this->processOutgoingMessages( frame );
+}
+
+void UDPNode::sendLaunchTorpedoSignalToMicroController( const AUVROS::MessageTypes::Torpedo& message )
+{
+	Frame frame;
+	frame.commandCode = NORESPREQ_LAUNCH_TORPEDO;
+	frame.payloadSize = 1;
+
+	frame.payload.at( 0 ) = static_cast< network::payloadWordType >( message.data );
 
 	this->processOutgoingMessages( frame );
 }

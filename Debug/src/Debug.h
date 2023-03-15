@@ -16,10 +16,14 @@
 
 namespace labels
 {
-	const std::array< std::string, 5 > thrusters{
-		"Thruster #1", "Thruster #2", "Thruster #3", "Thruster #4", "Thruster #5"
-	};
-}
+const std::array< std::string, 5 > thrusters{
+	"Thruster #1", "Thruster #2", "Thruster #3", "Thruster #4", "Thruster #5"
+};
+const std::array< std::string, 2 > servos{ "Servo #1", "Servo #2" };
+const std::array< std::string, 6 > DVLDeadReckoning{ "x", "y", "z", "roll", "pitch", "yaw" };
+const std::array< std::string, 1 > states{ "Current State" };
+
+} // namespace labels
 
 class Debug final : public NodeBase
 {
@@ -33,14 +37,19 @@ public:
 		subscribeTopics();
 		advertiseTopics();
 	}
-	~Debug() = default;
 
 protected:
 private:
 	enum DisplayerDataPositions
 	{
 		Health,
-		ThrustersArbitrarly
+		ThrustersArbitrarly,
+		ServosArbitrarly,
+		DVLDeadReckoning,
+		ThrustersRegulator,
+		ServosRegulator,
+		GlobalEstimatedPosition,
+		State
 	};
 
 	void processInMainLoop() override;
@@ -52,6 +61,12 @@ private:
 
 	void displayNodeHealthStatus( const AUVROS::MessageTypes::HealthReport& report );
 	void displayArbitrarlySetThrustersStatus( const AUVROS::MessageTypes::ThrustersSignal& message );
+	void displayArbitrarlySetServosStatus( const AUVROS::MessageTypes::ServosSignal& message );
+	void displayDVLDeadReckoningStatus( const AUVROS::MessageTypes::DVLDeadReckoning& message );
+	void displaySetThrustersRegulatorStatus( const AUVROS::MessageTypes::ThrustersSignal& message );
+	void displaySetServosRegulatorStatus( const AUVROS::MessageTypes::ServosSignal& message );
+	void displayEstimatedPositionStatus( const AUVROS::MessageTypes::Position& message );
+	void displayCurrentStateStatus( const AUVROS::MessageTypes::StateNames& message );
 
 	Displayer displayer;
 

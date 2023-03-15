@@ -1,20 +1,24 @@
 #include "VehiclePhysicalModel.h"
 
 #include <algorithm>
+#include <exception>
+#include <iostream>
 
 #include "jsonCommonFunctions.h"
 
 void VehiclePhysicalModel::loadPhysicalParameters( configFiles::fileID configID )
 {
-	this->inertialParams                                = jsonFunctions::vehicle::readInertialData( configID );
-	this->thrusterParams                                = jsonFunctions::vehicle::readThrustersData( configID );
-	this->dragParams                                    = jsonFunctions::vehicle::readDragData( configID );
-	this->servos                                        = jsonFunctions::vehicle::readServosData( configID );
-	this->thrusterParams.azimuthalThrustersConfigMatrix = this->getAzimuthalThrustersConfig();
-	this->thrusterParams.numberOfAzimuthalThrusters     = servos.azimuthalThrusterDimensionsOfInfluence.size();
+	this->inertialParams = jsonFunctions::vehicle::readInertialData( configID );
+	this->thrusterParams = jsonFunctions::vehicle::readThrustersData( configID );
+	this->dragParams     = jsonFunctions::vehicle::readDragData( configID );
+	this->servos         = jsonFunctions::vehicle::readServosData( configID );
 }
 
-void VehiclePhysicalModel::adjustParametersForWorkingFrequency( const float freq ) {}
+void VehiclePhysicalModel::adjustParametersForWorkingFrequency( const float freq )
+{
+	this->servos.servoSpeed /= freq;
+	this->thrusterParams.deltaU /= freq;
+}
 
 void VehiclePhysicalModel::initMatrices()
 {
@@ -52,14 +56,20 @@ void VehiclePhysicalModel::initMatrices()
 	this->dragParams.Dnl = ( -vnl ).asDiagonal();
 
 	// Thrust matrix
-	// TODO: to musi byc odswiezane - trzeba dopisac funkcje osobna, ktora liczy i updateuje nie tylko macierz, ale tez
-	// TODO: wektory w oparciu o funkcje, ktore musza byc zdefiniowane w pliku. dorob nowy atrybut klasy, ktory bedzie
-	// TODO: przechowywal funkcje do przeliczenia wartosci (sin, cos, zero) jak i pochodne
-	for( auto i = 0u; i < this->thrusterParams.thrustersAmount; ++i )
-	{
-		this->thrusterParams.AllThrustersConfigurationsMatrix.block< 6, 1 >( 0, i )
-		    = this->thrusterParams.thrusterConfigurations.at( i );
-	}
+	calculateAllThrusterConfigutationMatrix();
+
+	// simulation max thrust matrix
+	const auto& maxThrust = thrusterParams.maxThrust;
+	VectorXd KMaxDiag     = VectorXd::Zero( 5 );
+	KMaxDiag << maxThrust, maxThrust, maxThrust, maxThrust, maxThrust;
+	thrusterParams.KMax = KMaxDiag.asDiagonal();
+
+	// std::cout << thrusterParams.AllThrustersConfigurationsMatrix << std::endl;
+	// for( auto i = 0u; i < 5; ++i )
+	// {
+	// 	std::cout << thrusterParams.AllThrustersConfigurationsMatrix( 5, i ) << " ";
+	// }
+	// std::cout << std::endl;
 }
 
 VectorXd VehiclePhysicalModel::getRestoringForces( const VectorXd& currentState ) const
@@ -84,62 +94,186 @@ VectorXd VehiclePhysicalModel::getRestoringForces( const VectorXd& currentState 
 	    -( yg * W - yb * B ) * cos( theta ) * cos( phi ) + ( zg * W - zb * B ) * cos( theta ) * sin( phi ),
 	    ( zg * W - zb * B ) * sin( theta ) + ( xg * W - xb * B ) * cos( theta ) * cos( phi ),
 	    -( xg * W - xb * B ) * cos( theta ) * sin( phi ) - ( yg * W - yb * B ) * sin( theta );
+
 	return restoringForces;
 }
 
-MatrixXd VehiclePhysicalModel::getAzimuthalThrustersConfig()
+MatrixXd VehiclePhysicalModel::getAzimuthalThrustersConfig() const
 {
-	MatrixXd configMatrix;
-	std::vector< MatrixXd > configVectors;
-	for( auto i = 0u; i < this->servos.azimuthalThrusterDimensionsOfInfluence.size(); ++i )
-	{
-		const auto& thrusterNumber = this->servos.azimuthalThrusterDimensionsOfInfluence.at( i ).first;
-		const auto& influences     = this->servos.azimuthalThrusterDimensionsOfInfluence.at( i ).second;
-		const auto& thrusterConfig = this->thrusterParams.thrusterConfigurations.at( thrusterNumber );
-		auto variant               = influences.size();
-		configVectors.emplace_back( MatrixXd::Zero( variant, 1 ) );
-		switch( variant )
-		{
-		case 1u:
-			*configVectors.rbegin() << thrusterConfig( influences.at( 0 ) );
-			break;
-		case 2u:
-			*configVectors.rbegin() << thrusterConfig( influences.at( 0 ) ), thrusterConfig( influences.at( 1 ) );
-			break;
-		case 3u:
-			*configVectors.rbegin() << thrusterConfig( influences.at( 0 ) ), thrusterConfig( influences.at( 1 ) ),
-			    thrusterConfig( influences.at( 2 ) );
-			break;
-		case 4u:
-			*configVectors.rbegin() << thrusterConfig( influences.at( 0 ) ), thrusterConfig( influences.at( 1 ) ),
-			    thrusterConfig( influences.at( 2 ) ), thrusterConfig( influences.at( 3 ) );
-			break;
-		case 5u:
-			*configVectors.rbegin() << thrusterConfig( influences.at( 0 ) ), thrusterConfig( influences.at( 1 ) ),
-			    thrusterConfig( influences.at( 2 ) ), thrusterConfig( influences.at( 3 ) ),
-			    thrusterConfig( influences.at( 4 ) );
-			break;
-		case 6u:
-			*configVectors.rbegin() << thrusterConfig( influences.at( 0 ) ), thrusterConfig( influences.at( 1 ) ),
-			    thrusterConfig( influences.at( 2 ) ), thrusterConfig( influences.at( 3 ) ),
-			    thrusterConfig( influences.at( 4 ) ), thrusterConfig( influences.at( 5 ) );
-			break;
-		default:
-			break;
-		}
-	}
-	auto maxVectorLength = 0u;
-	for( const auto& in : configVectors )
-	{
-		maxVectorLength = std::max( maxVectorLength, static_cast< unsigned >( in.rows() ) );
-	}
-	configMatrix = MatrixXd::Zero( maxVectorLength, configVectors.size() );
+	const auto& startColumn   = this->servos.azimuthalThrusterDimensionsOfInfluence.begin()->first;
+	const auto& columnsNumber = this->servos.azimuthalThrusterDimensionsOfInfluence.size();
 
-	for( auto i = 0u; i < configMatrix.cols(); ++i )
+	MatrixXd azimuthalConfigMatrix
+	    = this->thrusterParams.AllThrustersConfigurationsMatrix.block( 0, startColumn, sixDim, columnsNumber );
+
+	return azimuthalConfigMatrix;
+}
+
+void VehiclePhysicalModel::calculateAllThrusterConfigutationMatrix()
+{
+
+	for( auto i = 0u; i < this->thrusterParams.thrustersAmount; ++i )
 	{
-		configMatrix.block( 0, i, maxVectorLength, 1 ) = configVectors.at( i );
+		auto additionalPitchForAzimuthal{ 0.0 };
+		if( i < this->thrusterParams.numberOfAzimuthalThrusters )
+		{
+			if( servos.servosAngles.at( i ).second == dimensionsIndex::pitch )
+			{
+				additionalPitchForAzimuthal = this->servos.servosAngles.at( i ).first;
+			}
+		}
+		const auto& oneThrusterPositionAndRotation = this->thrusterParams.positionsAndRotations.at( i );
+
+		MatrixXd oneThrusterConfig = MatrixXd::Zero( 6, 1 );
+		// x, y, z in the robots frame of reference, roll, pitch, yaw calculated from neutral position
+		// neutral position is assumed to be in the case of thruster forward thrust vector pointing in x axis
+		oneThrusterConfig( dimensionsIndex::x )
+		    = std::cos( oneThrusterPositionAndRotation( dimensionsIndex::pitch ) + additionalPitchForAzimuthal )
+		    * std::cos( oneThrusterPositionAndRotation( dimensionsIndex::yaw ) );
+		oneThrusterConfig( dimensionsIndex::y ) = std::sin( oneThrusterPositionAndRotation( dimensionsIndex::yaw ) )
+		    * std::cos( oneThrusterPositionAndRotation( dimensionsIndex::roll ) );
+		oneThrusterConfig( dimensionsIndex::z )
+		    = -std::sin( oneThrusterPositionAndRotation( dimensionsIndex::pitch ) + additionalPitchForAzimuthal )
+		    * std::cos( oneThrusterPositionAndRotation( dimensionsIndex::roll ) );
+		// moments
+		oneThrusterConfig( dimensionsIndex::roll )
+		    = oneThrusterConfig( dimensionsIndex::z ) * oneThrusterPositionAndRotation( dimensionsIndex::y )
+		    - oneThrusterConfig( dimensionsIndex::y ) * oneThrusterPositionAndRotation( dimensionsIndex::z );
+		oneThrusterConfig( dimensionsIndex::pitch )
+		    = oneThrusterConfig( dimensionsIndex::x ) * oneThrusterPositionAndRotation( dimensionsIndex::z )
+		    - oneThrusterConfig( dimensionsIndex::z ) * oneThrusterPositionAndRotation( dimensionsIndex::x );
+		oneThrusterConfig( dimensionsIndex::yaw )
+		    = oneThrusterConfig( dimensionsIndex::y ) * oneThrusterPositionAndRotation( dimensionsIndex::x )
+		    - oneThrusterConfig( dimensionsIndex::x ) * oneThrusterPositionAndRotation( dimensionsIndex::y );
+
+		this->thrusterParams.AllThrustersConfigurationsMatrix.block< 6, 1 >( 0, i ) = oneThrusterConfig;
+
+		// std::cout << "Pednik: " << i + 1 << "\n" << oneThrusterConfig << std::endl;
 	}
-	return configMatrix;
+}
+
+void VehiclePhysicalModel::updateAzimuthalThrusterConfig( const std::vector< double >& newServosAngles,
+                                                          const VectorXd& thrustSignal_u )
+{
+	if( newServosAngles.size() != this->thrusterParams.numberOfAzimuthalThrusters )
+	{
+		throw std::runtime_error( "Wrong number of azimuthal thrusters to update!" );
+	}
+
+	for( auto i = 0u; i < newServosAngles.size(); ++i )
+	{
+		this->servos.servosAngles.at( i ).first = newServosAngles.at( i );
+	}
+
+	calculateAllThrusterConfigutationMatrix();
+	updateAzimuthalThrustersDifferentialMatrix( thrustSignal_u );
+}
+
+void VehiclePhysicalModel::updateAzimuthalThrustersDifferentialMatrix( const VectorXd& thrustSignal_u )
+{
+	Matrix< double, sixDim, 1 > firstThruster  = Matrix< double, sixDim, 1 >::Zero();
+	Matrix< double, sixDim, 1 > secondThruster = Matrix< double, sixDim, 1 >::Zero();
+
+	firstThruster << thrusterParams.azimuthalDerivativeFunctions.at( 0 ).linearForces.at( 0 ).minusFactor
+	        * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).linearForces.at( 0 ).trigonometricFunction(
+	            this->servos.servosAngles.at( 0 ).first )
+	        * thrustSignal_u( 0 ),
+	    thrusterParams.azimuthalDerivativeFunctions.at( 0 ).linearForces.at( 1 ).minusFactor
+	    * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).linearForces.at( 1 ).trigonometricFunction(
+	        this->servos.servosAngles.at( 0 ).first )
+	    * thrustSignal_u( 0 ),
+	    thrusterParams.azimuthalDerivativeFunctions.at( 0 ).linearForces.at( 2 ).minusFactor
+	    * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).linearForces.at( 2 ).trigonometricFunction(
+	        this->servos.servosAngles.at( 0 ).first )
+	    * thrustSignal_u( 0 ),
+
+	    ( thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 0 ).first.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 0 ).first.trigonometricFunction(
+	              this->servos.servosAngles.at( 0 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 0 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 0 ).first.dimensionToMultiply )
+	      + thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 0 ).second.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 0 ).second.trigonometricFunction(
+	              this->servos.servosAngles.at( 0 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 0 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 0 ).second.dimensionToMultiply ) )
+	    * thrustSignal_u( 0 ),
+
+	    ( thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 1 ).first.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 1 ).first.trigonometricFunction(
+	              this->servos.servosAngles.at( 0 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 0 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 1 ).first.dimensionToMultiply )
+	      + thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 1 ).second.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 1 ).second.trigonometricFunction(
+	              this->servos.servosAngles.at( 0 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 0 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 1 ).second.dimensionToMultiply ) )
+	    * thrustSignal_u( 0 ),
+
+	    ( thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 2 ).first.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 2 ).first.trigonometricFunction(
+	              this->servos.servosAngles.at( 0 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 0 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 2 ).first.dimensionToMultiply )
+	      + thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 2 ).second.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 2 ).second.trigonometricFunction(
+	              this->servos.servosAngles.at( 0 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 0 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 0 ).torques.at( 2 ).second.dimensionToMultiply ) )
+	    * thrustSignal_u( 0 );
+
+	secondThruster << thrusterParams.azimuthalDerivativeFunctions.at( 1 ).linearForces.at( 0 ).minusFactor
+	        * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).linearForces.at( 0 ).trigonometricFunction(
+	            this->servos.servosAngles.at( 1 ).first )
+	        * thrustSignal_u( 1 ),
+	    thrusterParams.azimuthalDerivativeFunctions.at( 1 ).linearForces.at( 1 ).minusFactor
+	    * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).linearForces.at( 1 ).trigonometricFunction(
+	        this->servos.servosAngles.at( 1 ).first )
+	    * thrustSignal_u( 1 ),
+	    thrusterParams.azimuthalDerivativeFunctions.at( 1 ).linearForces.at( 2 ).minusFactor
+	    * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).linearForces.at( 2 ).trigonometricFunction(
+	        this->servos.servosAngles.at( 1 ).first )
+	    * thrustSignal_u( 1 ),
+
+	    ( thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 0 ).first.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 0 ).first.trigonometricFunction(
+	              this->servos.servosAngles.at( 1 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 1 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 0 ).first.dimensionToMultiply )
+	      + thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 0 ).second.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 0 ).second.trigonometricFunction(
+	              this->servos.servosAngles.at( 1 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 1 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 0 ).second.dimensionToMultiply ) )
+	    * thrustSignal_u( 1 ),
+
+	    ( thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 1 ).first.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 1 ).first.trigonometricFunction(
+	              this->servos.servosAngles.at( 1 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 1 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 1 ).first.dimensionToMultiply )
+	      + thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 1 ).second.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 1 ).second.trigonometricFunction(
+	              this->servos.servosAngles.at( 1 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 1 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 1 ).second.dimensionToMultiply ) )
+	    * thrustSignal_u( 1 ),
+
+	    ( thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 2 ).first.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 2 ).first.trigonometricFunction(
+	              this->servos.servosAngles.at( 1 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 1 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 2 ).first.dimensionToMultiply )
+	      + thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 2 ).second.minusFactor
+	          * thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 2 ).second.trigonometricFunction(
+	              this->servos.servosAngles.at( 1 ).first )
+	          * this->thrusterParams.positionsAndRotations.at( 1 )(
+	              thrusterParams.azimuthalDerivativeFunctions.at( 1 ).torques.at( 2 ).second.dimensionToMultiply ) )
+	    * thrustSignal_u( 1 );
+
+	this->thrusterParams.AzimuthalThrustersDifferentialConfig.block< sixDim, 1 >( 0, 0 ) = firstThruster;
+	this->thrusterParams.AzimuthalThrustersDifferentialConfig.block< sixDim, 1 >( 0, 1 ) = secondThruster;
 }
 
 Matrix< double, sixDim, sixDim > VehiclePhysicalModel::calculateCoriolisMatrix( const VectorXd& currentState ) const

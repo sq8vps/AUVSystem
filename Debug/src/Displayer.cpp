@@ -10,17 +10,17 @@ void Displayer::addInfoToDisplay( const std::string& header,
 {
 	if( header.size() > display::headerDisplayWidth )
 	{
-		throw "Header name is too long.";
+		throw std::runtime_error( "Header name is too long." );
 	}
 
 	this->dataColumns.emplace_back( header, labels, init );
 }
 
-void Displayer::setMajorColumnValues( unsigned dataColumnIndex, const std::vector< DataType >& dataForDisplayer )
+void Displayer::setMajorColumnValues( const unsigned dataColumnIndex, const std::vector< DataType >& dataForDisplayer )
 {
 	if( this->dataColumns.at( dataColumnIndex ).dataLabelsFields.size() != dataForDisplayer.size() )
 	{
-		throw "Wrong data or data size for display.";
+		throw std::runtime_error( "Wrong data or data size for display." );
 	}
 
 	for( auto i = 0u; i < dataForDisplayer.size(); ++i )
@@ -29,7 +29,7 @@ void Displayer::setMajorColumnValues( unsigned dataColumnIndex, const std::vecto
 	}
 }
 
-std::string Displayer::createUtilityRow( display::rowType type ) const
+std::string Displayer::createUtilityRow( const display::rowType type ) const
 {
 	std::string row;
 	row.reserve( display::totalDisplayWidth );
@@ -73,7 +73,7 @@ std::string Displayer::createUtilityRow( display::rowType type ) const
 	row += '\n';
 	return row;
 }
-std::string Displayer::createMajorRow( unsigned dataRowNumber ) const
+std::string Displayer::createMajorRow( const unsigned dataRowNumber ) const
 {
 	std::string dataMajorRow;
 	std::string headerRow;
@@ -81,7 +81,9 @@ std::string Displayer::createMajorRow( unsigned dataRowNumber ) const
 
 	headerRow = display::sideBorderSeparator;
 	int bias{ -1 }; // adjusting padding for signs longer than one 1B
-	for( auto i = 0u; i < display::totalNumberOfMajorColumnsPerRow; ++i )
+	for( auto i = dataRowNumber * display::totalNumberOfMajorColumnsPerRow;
+	     ( i < dataColumns.size() && i < ( dataRowNumber + 1 ) * display::totalNumberOfMajorColumnsPerRow );
+	     ++i )
 	{
 		if( i < dataColumns.size() )
 		{
@@ -130,7 +132,9 @@ std::string Displayer::createMajorRow( unsigned dataRowNumber ) const
 
 		bias = -1; // adjusting padding for signs longer than one 1B
 
-		for( auto i = 0u; i < display::totalNumberOfMajorColumnsPerRow; ++i )
+		for( auto i = dataRowNumber * display::totalNumberOfMajorColumnsPerRow;
+		     ( i < dataColumns.size() && i < ( dataRowNumber + 1 ) * display::totalNumberOfMajorColumnsPerRow );
+		     ++i )
 		{
 			if( i < dataColumns.size() )
 			{
@@ -191,7 +195,7 @@ std::string Displayer::createMajorRow( unsigned dataRowNumber ) const
 	return dataMajorRow;
 }
 
-void Displayer::displayDebugInfo( bool isNumberOfSubscribedTopicsGood ) const
+void Displayer::displayDebugInfo( const bool isNumberOfSubscribedTopicsGood ) const
 {
 	std::string finalDisplay;
 	finalDisplay.reserve( display::totalDisplayWidth * display::totalDisplayHeight );
@@ -206,9 +210,13 @@ void Displayer::displayDebugInfo( bool isNumberOfSubscribedTopicsGood ) const
 	// add some stuff
 	finalDisplay.append( createMajorRow( 0u ) );
 
+	finalDisplay.append( createUtilityRow( display::rowType::majorSeparator ) );
+
+	finalDisplay.append( createMajorRow( 1u ) );
+
 	// bottom
 	finalDisplay.append( createUtilityRow( display::rowType::bottomBorder ) );
-	int r = system( "clear" );
+	system( "clear" );
 	finalDisplay.shrink_to_fit();
 	std::cout << finalDisplay;
 }

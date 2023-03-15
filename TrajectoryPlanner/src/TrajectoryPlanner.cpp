@@ -1,5 +1,4 @@
 #include "TrajectoryPlanner.h"
-#include "ROSEnums.h"
 
 void TrajectoryPlanner::processInMainLoop() {}
 
@@ -10,3 +9,8 @@ void TrajectoryPlanner::subscribeTopics()
 }
 void TrajectoryPlanner::advertiseTopics() {}
 void TrajectoryPlanner::connectServices() {}
+
+void TrajectoryPlanner::generateObstacleModeTrajectory( const OccupancyGrid& grid )
+{
+	this->occupancyGrid = grid;
+}

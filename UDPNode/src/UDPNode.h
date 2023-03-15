@@ -34,6 +34,7 @@ public:
 
 		subscribeTopics();
 		advertiseTopics();
+		this->udpServer->startServer();
 	}
 	~UDPNode() = default;
 
@@ -43,7 +44,7 @@ private:
 
 	std::unique_ptr< UDPServer > udpServer;
 
-	// jetson is the udp server
+	// system is the udp server
 	uint16_t serverPort;
 	uint16_t clientPort;
 	std::string serverAdress;
@@ -62,4 +63,5 @@ private:
 
 	void sendThrustersSignalToMicroController( const AUVROS::MessageTypes::ThrustersSignal& message );
 	void sendServosSignalToMicroController( const AUVROS::MessageTypes::ServosSignal& mesagge );
+	void sendLaunchTorpedoSignalToMicroController( const AUVROS::MessageTypes::Torpedo& mesagge );
 };

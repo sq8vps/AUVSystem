@@ -1,7 +1,11 @@
 #pragma once
 
+#include <array>
+#include <cmath>
 #include <fstream>
+#include <functional>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -12,7 +16,8 @@
 using namespace Eigen;
 using namespace regulator;
 
-class VehiclePhysicalModel;
+using TorquesFunctions
+    = std::vector< std::tuple< std::function< double() >, std::function< double( double ) >, double > >;
 
 Matrix3d Smtrx( const Eigen::Vector3d& r );
 
@@ -62,16 +67,47 @@ public:
 
 	struct Thrusters
 	{
+		struct LinearForcesFunction
+		{
+			double minusFactor{ 1.0 };
+			std::function< double( double ) > trigonometricFunction;
+		};
+
+		struct TorqueFunction
+		{
+			double minusFactor{ 1.0 };
+			std::function< double( double ) > trigonometricFunction;
+			dimensionsIndex dimensionToMultiply{ dimensionsIndex::x };
+		};
+
+		struct AzimuthalThrusterFunctions
+		{
+			std::array< LinearForcesFunction, 3 > linearForces;
+			std::array< std::pair< TorqueFunction, TorqueFunction >, 3 > torques;
+		};
+
 		// configuration - the  , {x, y, z, p, q, r}
 		MatrixXd AllThrustersConfigurationsMatrix = MatrixXd::Zero( sixDim, 5 );
+		// Tdiff
+		MatrixXd AzimuthalThrustersDifferentialConfig = MatrixXd::Zero( sixDim, 2 );
 
 		// VectorXd::Zero( 6, 1 ) x thrusterAmount;
-		std::vector< VectorXd > thrusterConfigurations;
-		MatrixXd azimuthalThrustersConfigMatrix;
+		std::vector< VectorXd > positionsAndRotations;
+		// Influence is calculated from position and rotations
+
+		// MatrixXd azimuthalThrustersConfigMatrix;
+		// useless - probably
+		std::vector< AzimuthalThrusterFunctions > azimuthalBaseFunctions;
+
+		// useful
+		std::vector< AzimuthalThrusterFunctions > azimuthalDerivativeFunctions;
+
+		// thrusters config matrix containing max thrust values - only for simulation
+		Matrix< double, 5, 5 > KMax = Matrix< double, 5, 5 >::Zero();
+
 		// inertia of thruster - how fast can thrusters change their generated thrust per deltaT
 		double deltaU{ 0.0 };
-
-		double maxThrust;
+		double maxThrust{ 0.0 };
 		unsigned numberOfAzimuthalThrusters{ 0u };
 		unsigned thrustersAmount{ 0u };
 	};
@@ -80,6 +116,9 @@ public:
 	{
 		std::vector< std::pair< int, std::vector< dimensionsIndex > > > azimuthalThrusterDimensionsOfInfluence;
 		double servoSpeed{ 0.0 };
+		std::vector< std::pair< double, dimensionsIndex > > servosAngles;
+
+		std::pair< double, double > servoAngleLimits{ 0.0, math::piNumber };
 	};
 
 	VehiclePhysicalModel( configFiles::fileID configID )
@@ -89,6 +128,12 @@ public:
 	}
 
 	Matrix< double, sixDim, sixDim > calculateCoriolisMatrix( const VectorXd& currentState ) const;
+
+	MatrixXd getAzimuthalThrustersConfig() const;
+	void calculateAllThrusterConfigutationMatrix();
+	void updateAzimuthalThrusterConfig( const std::vector< double >& newServosAngles, const VectorXd& thrustSignal_u );
+	void updateAzimuthalThrustersDifferentialMatrix( const VectorXd& thrustSignal_u );
+	VectorXd getRestoringForces( const VectorXd& currentState ) const; // Getting restoring forces vector
 
 	const Drag& getModelDrag() const
 	{
@@ -110,12 +155,10 @@ public:
 		return this->servos;
 	}
 
+	void adjustParametersForWorkingFrequency( const float freq );
+
 private:
 	void loadPhysicalParameters( configFiles::fileID configID );
-	void adjustParametersForWorkingFrequency( float freq );
-
-	MatrixXd getAzimuthalThrustersConfig();
-	VectorXd getRestoringForces( const VectorXd& currentState ) const; // Getting restoring forces vector
 
 	void initMatrices();
 
@@ -123,10 +166,6 @@ private:
 	Thrusters thrusterParams;
 	Drag dragParams;
 	Servos servos;
-
-	// Thrust configuration matrix;
-
-	MatrixXd KAll = MatrixXd::Zero( 5, 5 );
 
 	// public:
 	// 	VectorXd getThrustSignal() const;

@@ -70,6 +70,13 @@
         "bit": "cpp",
         "csignal": "cpp",
         "codecvt": "cpp",
-        "shared_mutex": "cpp"
-    }
+        "shared_mutex": "cpp",
+        "any": "cpp"
+    },
+    "files.exclude": {
+        "**/external": true
+    },
+    "ros.distro": "noetic",
+    "C_Cpp.codeAnalysis.clangTidy.enabled": true,
+    "C_Cpp.dimInactiveRegions": true
 }
