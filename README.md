@@ -13,6 +13,7 @@ git submodule update --init --remote --recursive
 Clone this repo to your favourite directory.
 Make sure you have installed:
 
+- Ubuntu 20.04.5
 - git
 - gcc and g++ 9.4 or newer
 - CMake 3.16 or newer (apt-get install cmake)
